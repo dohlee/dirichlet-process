@@ -5,8 +5,8 @@ import seaborn as sns; sns.set()
 sns.set_style('white')
 
 ALPHA = 10
-STDDEV = 0.4
-NUM_DATA = 100
+STDDEV = 0.8
+NUM_DATA = 300
 COLORS = ['red', 'green', 'blue', 'black', 'purple']
 
 def generate_test_data(numData, numCluster):
@@ -16,7 +16,7 @@ def generate_test_data(numData, numCluster):
 	# Mixing coefficient.
 	pi = np.random.dirichlet([ALPHA] * numCluster)
 	# Means of clusters.
-	mus = np.linspace(start=0, stop=1, num=numCluster) + np.random.normal(loc=0, scale=0.01, size=numCluster)
+	mus = np.linspace(start=-1, stop=1, num=numCluster) + np.random.normal(loc=0, scale=0.1, size=numCluster)
 	# Generate and return data.
 	data, labels = [], []
 	for _ in range(numData):
@@ -35,7 +35,7 @@ if __name__ == '__main__':
 		# Save figures.
 		plt.clf()
 		for i, label in enumerate(range(numCluster)):
-			plt.hist(data[labels == label], color=COLORS[i], bins=20, alpha=0.66)
+			plt.hist(data[labels == label], color=COLORS[i], bins=20, alpha=0.66, ec='black')
 		plt.savefig('../figures/1d-cluster-%d.png' % numCluster)
 
 		# Save data as tsv file.

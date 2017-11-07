@@ -11,9 +11,9 @@ sns.set_style('white')
 # Hyperparameters
 HP_MEAN = 0
 HP_VAR = 0.1
-CLUSTER_VAR = 0.01
-ALPHA = 0.01
-NUM_ITER = 20
+CLUSTER_VAR = 0.04
+ALPHA = 0.1
+NUM_ITER = 10
 COLORS = ['red', 'green', 'blue', 'black', 'purple', 'skyblue', 'lightgreen', 'pink', 'yellow', 'grey']
 
 class Phi:
@@ -44,12 +44,13 @@ class Phi:
         data = np.array([v for k, v in self.associatedData.items()])
         posteriorSigma = 1 / (1 / HP_VAR + self.numAssociatedObservation / CLUSTER_VAR)
         posteriorMu = posteriorSigma * (HP_MEAN / HP_VAR + np.sum(data, axis=0) / CLUSTER_VAR)
-        self.parameters = dict([('loc', norm(posteriorMu, posteriorSigma).rvs()), ('scale', np.sqrt(CLUSTER_VAR))])
+
+        self.parameters = dict([('loc', norm(loc=posteriorMu, scale=np.sqrt(posteriorSigma)).rvs()), ('scale', np.sqrt(CLUSTER_VAR))])
         self.distribution = self.distType(**self.parameters)
 
 class State:
     """State object representing current status of the algorithm."""
-    def __init__(self, data, initNumCluster=1):
+    def __init__(self, data, initNumCluster=2):
         self._initialize(data, initNumCluster)
 
     def _initialize(self, data, initNumCluster):
@@ -70,6 +71,7 @@ class State:
         self.clusterMaxId = initNumCluster
         self.numCluster = initNumCluster
         self.numData = len(data)
+        print(self.numData)
 
     def clean_up_clusters(self):
         toRemove = [id for id, cluster in self.clusters.items() if cluster.is_empty()]
@@ -81,18 +83,19 @@ class State:
         for i, datum in enumerate(self.data):
             assignedClusterId = self.assignment[i]
             self.clusters[assignedClusterId].deassociate_datum(i)
+            self.clean_up_clusters()
 
+            # assert sum(cluster.numAssociatedObservation for cluster in self.clusters.values()) == self.numData - 1
             qs = np.array([cluster.numAssociatedObservation / (self.numData - 1 + ALPHA) * cluster.likelihood(datum) \
                  for clusterId, cluster in self.clusters.items()])
 
-            posteriorSigma = 1 / (1 / HP_VAR + 1 / CLUSTER_VAR)
-            posteriorMu = posteriorSigma * (HP_MEAN / HP_VAR + datum / CLUSTER_VAR)
+            posteriorVar = 1 / (1 / HP_VAR + 1 / CLUSTER_VAR)
+            posteriorMu = posteriorVar * (HP_MEAN / HP_VAR + datum / CLUSTER_VAR)
             pYGivenTheta = norm(0, np.sqrt(CLUSTER_VAR)).pdf(datum)
             pTheta = norm(HP_MEAN, np.sqrt(HP_VAR)).pdf(0)
-            pThetaGivenY = norm(posteriorMu, np.sqrt(posteriorSigma)).pdf(0)
-            r = ALPHA * pYGivenTheta * pTheta / pThetaGivenY
+            pThetaGivenY = norm(posteriorMu, np.sqrt(posteriorVar)).pdf(0)
 
-            r = ALPHA / (self.numData - 1 + ALPHA) * pYGivenTheta * pTheta * pThetaGivenY
+            r = ALPHA / (self.numData - 1 + ALPHA) * pYGivenTheta * pTheta / pThetaGivenY
 
             normalization = np.sum(qs) + r
             qs = qs / normalization
@@ -101,8 +104,9 @@ class State:
             newClusterId = np.random.choice(list(self.clusters.keys()) + [self.clusterMaxId], p=np.hstack([qs, [r]]))
             if newClusterId == self.clusterMaxId:
                 self.clusterMaxId += 1
-                newMean = norm(posteriorMu, np.sqrt(posteriorSigma)).rvs()
-                newParameters = {'loc':newMean, 'scale':CLUSTER_VAR}
+                self.numCluster += 1
+                newMean = norm(posteriorMu, np.sqrt(posteriorVar)).rvs()
+                newParameters = {'loc':newMean, 'scale':np.sqrt(CLUSTER_VAR)}
                 newPhi = Phi(newClusterId, parameters=newParameters)
                 newPhi.associate_datum(i, datum)
                 self.clusters[newClusterId] = newPhi
@@ -112,16 +116,16 @@ class State:
                 self.clusters[newClusterId].associate_datum(i, datum)
 
     def gibbs_step(self):
-        self.clean_up_clusters()
+        # self.clean_up_clusters()
         self.update_assignment()
         for clusterId, cluster in self.clusters.items():
             cluster.update_parameters()
 
     def plot_clusters(self):
         print(len(self.clusters))
-        for i, clusterId in enumerate(self.clusters):
-            plt.hist(self.data[self.assignment == clusterId], bins=20)
+        d = [self.data[self.assignment == clusterId] for clusterId in self.clusters]
 
+        plt.hist(d, histtype='stepfilled', alpha=.66, bins=60, ec='black')
         plt.show()
 
 def parse_arguments():
@@ -136,11 +140,11 @@ def main():
     # if args.verbose:
         # logging.basicConfig(level=logging.INFO)
 
-    data = np.loadtxt('../../test-data/data/1d-cluster-3.tsv', dtype=np.float32)
-    state = State(data)
+    data = np.loadtxt('../../test-data/data/1d-cluster-4.tsv', dtype=np.float32)
+    state = State(data, initNumCluster=1)
 
-    for _ in range(200):
-        print('Iteration %d' % (_ + 1))
+    for _ in range(NUM_ITER):
+        print('Iteration %d: number of cluster %d' % ((_ + 1), state.numCluster))
         state.gibbs_step()
 
     state.plot_clusters()
