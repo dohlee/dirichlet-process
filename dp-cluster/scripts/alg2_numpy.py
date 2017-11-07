@@ -10,11 +10,10 @@ sns.set_style('white')
 
 # Hyperparameters
 HP_MEAN = 0
-HP_VAR = 0.1
-CLUSTER_VAR = 0.04
+HP_VAR = 1
+CLUSTER_VAR = 1 / 3**2
 ALPHA = 0.1
 NUM_ITER = 10
-COLORS = ['red', 'green', 'blue', 'black', 'purple', 'skyblue', 'lightgreen', 'pink', 'yellow', 'grey']
 
 class Phi:
     """Parameters associated to cluster."""
@@ -50,79 +49,93 @@ class Phi:
 
 class State:
     """State object representing current status of the algorithm."""
-    def __init__(self, data, initNumCluster=2):
+    def __init__(self, data, baseMeasure=norm, clusterDist=norm, initNumCluster=2):
+        self.baseMeasure = baseMeasure
+        self.clusterDist = clusterDist
+
         self._initialize(data, initNumCluster)
 
     def _initialize(self, data, initNumCluster):
         self.data = data
-        # Compute initial parameters of clusters based on random assignments of data.
+        # Make initial clusters.
         parameters = [dict([('loc', 0.0), ('scale', np.sqrt(CLUSTER_VAR))]) for clusterId in range(initNumCluster)]
         self.clusters = OrderedDict((clusterId, Phi(clusterId, parameters[clusterId])) for clusterId in range(initNumCluster))
 
+        # Randomly assign data points to clusters.
         self.assignment = np.zeros([len(data)])
         for i in range(len(data)):
+            # Randomly select cluster.
             assignedClusterId = np.random.choice(range(initNumCluster))
             self.assignment[i] = assignedClusterId
             self.clusters[assignedClusterId].associate_datum(i, data[i])
 
+        # Update cluster parameters based on assigned data.
         for clusterId, cluster in self.clusters.items():
             cluster.update_parameters()
 
         self.clusterMaxId = initNumCluster
         self.numCluster = initNumCluster
         self.numData = len(data)
-        print(self.numData)
 
-    def clean_up_clusters(self):
-        toRemove = [id for id, cluster in self.clusters.items() if cluster.is_empty()]
-        for id in toRemove:
-            del self.clusters[id]
-        self.numCluster -= len(toRemove)
+    def try_clean_up_cluster(self, clusterId):
+        if self.clusters[clusterId].is_empty():
+            del self.clusters[clusterId]
+            self.numCluster -= 1
+
+    def get_new_assignment(self, datum):
+        # Probability that existing cluster is selected.
+        clusterScores = np.array([cluster.numAssociatedObservation / (self.numData - 1 + ALPHA) * cluster.likelihood(datum) \
+                         for clusterId, cluster in self.clusters.items()])
+
+        posteriorVar = 1 / (1 / HP_VAR + 1 / CLUSTER_VAR)
+        posteriorMu = posteriorVar * (HP_MEAN / HP_VAR + datum / CLUSTER_VAR)
+
+        phi = 0  # Value of phi is not important.
+        pDatumGivenPhi = self.clusterDist(phi, np.sqrt(CLUSTER_VAR)).pdf(datum)
+        pPhi = self.baseMeasure(HP_MEAN, np.sqrt(HP_VAR)).pdf(phi)
+        pPhiGivenDatum = self.baseMeasure(posteriorMu, np.sqrt(posteriorVar)).pdf(phi)
+
+        newClusterScore = ALPHA / (self.numData - 1 + ALPHA) * pDatumGivenPhi * pPhi / pPhiGivenDatum
+
+        normalization = sum(clusterScores) + newClusterScore
+        probabilities = np.hstack([clusterScores / normalization, [newClusterScore / normalization]])
+        H = self.baseMeasure(posteriorMu, np.sqrt(posteriorVar))
+
+        return np.random.choice(list(self.clusters.keys()) + [self.clusterMaxId], p=probabilities), H
 
     def update_assignment(self):
         for i, datum in enumerate(self.data):
             assignedClusterId = self.assignment[i]
+
+            # First, ignore current data.
             self.clusters[assignedClusterId].deassociate_datum(i)
-            self.clean_up_clusters()
+            self.try_clean_up_cluster(assignedClusterId)
 
-            # assert sum(cluster.numAssociatedObservation for cluster in self.clusters.values()) == self.numData - 1
-            qs = np.array([cluster.numAssociatedObservation / (self.numData - 1 + ALPHA) * cluster.likelihood(datum) \
-                 for clusterId, cluster in self.clusters.items()])
+            newClusterId, H = self.get_new_assignment(datum)
 
-            posteriorVar = 1 / (1 / HP_VAR + 1 / CLUSTER_VAR)
-            posteriorMu = posteriorVar * (HP_MEAN / HP_VAR + datum / CLUSTER_VAR)
-            pYGivenTheta = norm(0, np.sqrt(CLUSTER_VAR)).pdf(datum)
-            pTheta = norm(HP_MEAN, np.sqrt(HP_VAR)).pdf(0)
-            pThetaGivenY = norm(posteriorMu, np.sqrt(posteriorVar)).pdf(0)
-
-            r = ALPHA / (self.numData - 1 + ALPHA) * pYGivenTheta * pTheta / pThetaGivenY
-
-            normalization = np.sum(qs) + r
-            qs = qs / normalization
-            r = r / normalization
-
-            newClusterId = np.random.choice(list(self.clusters.keys()) + [self.clusterMaxId], p=np.hstack([qs, [r]]))
+            # If new cluster should be added, sample phi from posterior distribution H,
+            # and add it.
             if newClusterId == self.clusterMaxId:
                 self.clusterMaxId += 1
                 self.numCluster += 1
-                newMean = norm(posteriorMu, np.sqrt(posteriorVar)).rvs()
-                newParameters = {'loc':newMean, 'scale':np.sqrt(CLUSTER_VAR)}
+                self.assignment[i] = newClusterId
+
+                newParameters = {'loc': H.rvs(), 'scale': np.sqrt(CLUSTER_VAR)}
+
                 newPhi = Phi(newClusterId, parameters=newParameters)
                 newPhi.associate_datum(i, datum)
                 self.clusters[newClusterId] = newPhi
-                self.assignment[i] = newClusterId
+            # Assign datum to existing cluster.
             else:
                 self.assignment[i] = newClusterId
                 self.clusters[newClusterId].associate_datum(i, datum)
 
     def gibbs_step(self):
-        # self.clean_up_clusters()
         self.update_assignment()
         for clusterId, cluster in self.clusters.items():
             cluster.update_parameters()
 
     def plot_clusters(self):
-        print(len(self.clusters))
         d = [self.data[self.assignment == clusterId] for clusterId in self.clusters]
 
         plt.hist(d, histtype='stepfilled', alpha=.66, bins=60, ec='black')
@@ -140,7 +153,7 @@ def main():
     # if args.verbose:
         # logging.basicConfig(level=logging.INFO)
 
-    data = np.loadtxt('../../test-data/data/1d-cluster-4.tsv', dtype=np.float32)
+    data = np.loadtxt('../../test-data/data/1d-cluster-3.tsv', dtype=np.float32)
     state = State(data, initNumCluster=1)
 
     for _ in range(NUM_ITER):
