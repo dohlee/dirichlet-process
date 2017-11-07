@@ -5,7 +5,7 @@ import seaborn as sns; sns.set()
 sns.set_style('white')
 
 ALPHA = 10
-COVARIANCE = [[0.5, 0], [0, 0.3]]
+COVARIANCE = np.array([[0.05, 0], [0, 0.1]])
 NUM_DATA = 100
 COLORS = ['red', 'green', 'blue', 'black', 'purple']
 
@@ -16,15 +16,15 @@ def generate_test_data(numData, numCluster):
 	# Mixing coefficient.
 	pi = np.random.dirichlet([ALPHA] * numCluster)
 	# Means of clusters.
-	muX = np.linspace(start=0, stop=numCluster, num=numCluster) + np.random.normal(loc=0, scale=0.1, size=numCluster)
-	muY = np.linspace(start=0, stop=numCluster, num=numCluster) + np.random.normal(loc=0, scale=0.1, size=numCluster)
+	muX = np.linspace(start=0, stop=1, num=numCluster) + np.random.normal(loc=0, scale=0.01, size=numCluster)
+	muY = np.linspace(start=0, stop=1, num=numCluster) + np.random.normal(loc=0, scale=0.01, size=numCluster)
 	mus = np.array(list(zip(np.random.permutation(muX), np.random.permutation(muY))))
 	# Generate and return data.
 	data, labels = [], []
 	for _ in range(numData):
 		label = np.random.choice(range(len(mus)), p=pi)
 		mu = mus[label]
-		d = np.random.multivariate_normal(mean=mu, cov=COVARIANCE)
+		d = np.random.multivariate_normal(mean=mu, cov=COVARIANCE / numCluster)
 		data.append(d)
 		labels.append(label)
 
