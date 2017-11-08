@@ -1,0 +1,11 @@
+# Pipeline for running DP clustering scripts.
+
+subworkflow test_data:
+    workdir: '../test-data/'
+    snakefile: '../test-data/Snakefile'
+
+include: 'rules/run_script.smk'
+
+rule all:
+    input:
+        expand('figures/alg2_numpy/{dimension}d-cluster-{numCluster}.png', dimension=[1], numCluster=range(2, 6))
