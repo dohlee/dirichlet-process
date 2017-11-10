@@ -1,5 +1,4 @@
 # Pipeline for running DP clustering scripts.
-
 subworkflow test_data:
     workdir: '../test-data/'
     snakefile: '../test-data/Snakefile'

@@ -6,7 +6,7 @@ sns.set_style('white')
 
 ALPHA = 10
 COVARIANCE = np.array([[0.05, 0], [0, 0.1]])
-NUM_DATA = 100
+NUM_DATA = 300
 COLORS = ['red', 'green', 'blue', 'black', 'purple']
 
 def generate_test_data(numData, numCluster):
@@ -39,8 +39,8 @@ if __name__ == '__main__':
 		plt.clf()
 		for i, label in enumerate(range(numCluster)):
 			plt.scatter(data[labels == label, 0], data[labels == label, 1], color=COLORS[i], alpha=0.66)
-		plt.savefig('figures/2d-cluster-%d.png' % numCluster)
+		plt.savefig('../figures/2d-cluster-%d.png' % numCluster)
 
 		# Save data as tsv file.
 		df = pd.DataFrame(data)
-		df.to_csv('data/2d-cluster-%d.tsv' % numCluster, sep='\t', index=False, header=False)
+		df.to_csv('../data/2d-cluster-%d.tsv' % numCluster, sep='\t', index=False, header=False)
