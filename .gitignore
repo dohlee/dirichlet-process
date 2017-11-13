@@ -2,3 +2,4 @@
 *.sublime-workspace
 
 **/.snakemake
+__pycache__
