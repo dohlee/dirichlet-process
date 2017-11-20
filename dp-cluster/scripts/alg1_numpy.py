@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns; sns.set()
 sns.set_style('white')
 
-def sample_theta_from_conditional(data, thetas, hp, i, baseMeasure):
+def sample_theta_from_conditional(data, thetas, hp, i, baseMeasure, clusterDistributions):
     """Sample ith from distribution of thetas conditioned by
     all the other thetas and ith data point.
     """
@@ -19,12 +19,11 @@ def sample_theta_from_conditional(data, thetas, hp, i, baseMeasure):
     # y is the data point that we focus on.
     # theta is the parameters that we are going to update.
     y, theta = data[i], thetas[i]
-    clusterDistribution = NormalDistribution(mean=theta, cov=CLUSTER_VAR)
-    qs = np.array([clusterDistribution.pdf(y) for j, theta in enumerate(thetas) if i != j])
+    qs = np.array([clusterDistributions[j].pdf(y) for j, thetaJ in enumerate(thetas) if i != j])
 
     H = baseMeasure.posterior_distribution(data=[y], clusterVariance=CLUSTER_VAR)
     theta = np.zeros(DIMENSION)  # Value of theta doesn't matter.
-    logLikelihood = clusterDistribution.logpdf(y)
+    logLikelihood = clusterDistributions[i].logpdf(y)
     prior = baseMeasure.logpdf(theta)
     posterior = H.logpdf(theta)
     r = ALPHA * np.exp(logLikelihood + prior - posterior)
@@ -76,14 +75,17 @@ def main():
     data = np.loadtxt(args.input)
     thetas = np.random.normal(loc=args.hpmean, scale=args.hpvar, size=[len(data), dimension])
     baseMeasure = NormalDistribution(mean=hpmean, cov=hpvar)
+    clusterDistribution = [NormalDistribution(mean=theta, cov=hyperparameters['CLUSTER_VAR']) for theta in thetas]
 
     for iteration in range(args.numiter):
         logging.info('Iteration %d' % (iteration + 1))
         for i in range(len(data)):
-            thetas[i] = sample_theta_from_conditional(data, thetas, hyperparameters, i, baseMeasure)
+            thetas[i] = sample_theta_from_conditional(data, thetas, hyperparameters, i, baseMeasure, clusterDistribution)
+            clusterDistribution[i] = NormalDistribution(mean=thetas[i], cov=hyperparameters['CLUSTER_VAR'])
 
         thetaCounts = Counter(list(map(lambda x: x[0], thetas)))
         plt.xlim((-4, 4))
+        plt.ylim((-2, 30))
         plt.hist(data, histtype='bar', bins=len(data) // 5, ec='black')
         for theta in thetas:
             plt.scatter(theta[0], y=0, alpha=0.66, zorder=2, s=thetaCounts[theta[0]] * 5)
