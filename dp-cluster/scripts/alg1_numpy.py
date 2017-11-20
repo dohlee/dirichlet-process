@@ -1,6 +1,7 @@
 import os
 import argparse
 import logging
+import imageio
 import numpy as np
 from distributions import NormalDistribution
 from collections import Counter
@@ -17,7 +18,7 @@ def sample_theta_from_conditional(data, thetas, hp, i, baseMeasure, clusterDistr
     DIMENSION = hp['DIMENSION']
 
     # y is the data point that we focus on.
-    # theta is the parameters that we are going to update.
+    # theta is the parameter that we are going to update.
     y, theta = data[i], thetas[i]
     qs = np.array([clusterDistributions[j].pdf(y) for j, thetaJ in enumerate(thetas) if i != j])
 
@@ -32,7 +33,10 @@ def sample_theta_from_conditional(data, thetas, hp, i, baseMeasure, clusterDistr
     qs = qs / normalization
     r = r / normalization
 
+    # Indices to be chosen.
+    # The last index represents the new theta to be added.
     choices = list(range(i)) + list(range(i+1, len(thetas))) + [len(thetas)]
+    # The probabilities that each choice will be chosen.
     probabilities = np.hstack([qs, [r]])
     choice = np.random.choice(choices, p=probabilities)
 
@@ -84,16 +88,25 @@ def main():
             clusterDistribution[i] = NormalDistribution(mean=thetas[i], cov=hyperparameters['CLUSTER_VAR'])
 
         thetaCounts = Counter(list(map(lambda x: x[0], thetas)))
+        plt.suptitle('Iteration=%d' % (iteration + 1))
+        plt.title('alpha=%.3f, cluster_var=%.3f' % (args.alpha, args.clustervar))
         plt.xlim((-4, 4))
         plt.ylim((-2, 30))
         plt.hist(data, histtype='bar', bins=len(data) // 5, ec='black')
         for theta in thetas:
             plt.scatter(theta[0], y=0, alpha=0.66, zorder=2, s=thetaCounts[theta[0]] * 5)
 
-        imgFileName = '../figures/alg1_numpy_%s_iteration_%d.png' % (os.path.basename(args.input).strip('.tsv'), iteration + 1)
+        imgFileName = '../figures/alg1_numpy/alg1_numpy_%s_iteration_%d.png' % (os.path.basename(args.input).strip('.tsv'), iteration + 1)
         plt.savefig(imgFileName)
         logging.info('Figure %s saved.' % imgFileName)
         plt.clf()
+
+    images = [imageio.imread('../figures/alg1_numpy/alg1_numpy_%s_iteration_%d.png'  % (os.path.basename(args.input).strip('.tsv'), iteration + 1)) \
+              for iteration in range(args.numiter)]
+    imageio.mimsave('../figures/alg1_numpy/alg1_numpy_%s.gif'  % (os.path.basename(args.input).strip('.tsv')), images, duration=0.33)
+
+    for iteration in range(args.numiter):
+        os.remove('../figures/alg1_numpy/alg1_numpy_%s_iteration_%d.png'  % (os.path.basename(args.input).strip('.tsv'), iteration + 1))
 
 if __name__ == '__main__':
     main()
