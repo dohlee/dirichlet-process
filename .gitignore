@@ -3,5 +3,3 @@
 
 **/.snakemake
 __pycache__
-
-dp-cluster/figures/*

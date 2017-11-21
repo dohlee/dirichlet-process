@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns; sns.set()
 sns.set_style('white')
 
+from util import img2gif
 
 class Cluster:
     """Parameters associated to cluster."""
@@ -65,10 +66,12 @@ class State:
         for clusterId, cluster in self.clusters.items():
             cluster.update_parameters()
 
-    def plot_clusters(self, numIter, save=None):
+    def plot_clusters(self, iteration, save=None):
+        plt.clf()
+
         d = [self.data[self.assignment == clusterId] for clusterId in self.clusters]
-        plt.suptitle('%s' % os.path.basename(save))
-        plt.title('#Iteration=%d, #Cluster=%d' % (numIter, len(self.clusters)))
+        plt.suptitle('Iteration=%d' % iteration)
+        plt.title('#Cluster=%d' % len(self.clusters))
         if self.hp['DIMENSION'] == 1:
             plt.hist(d, histtype='stepfilled', alpha=.66, bins=60, ec='black')
         else:
@@ -166,9 +169,10 @@ class State:
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', required=True, help='Input data.')
+    parser.add_argument('-o', '--output', default='../figures/alg2_numpy/', help='Output directory')
     parser.add_argument('-n', '--numiter', type=int, default=10, help='Number of iteration.')
     parser.add_argument('-c', '--clustervar', type=float, required=True, help='(Hyperparameter) Cluster variance.')
-    parser.add_argument('-a', '--alpha', default=0.1, help='(Hyperparameter) Inverse variance of dirichlet process.')
+    parser.add_argument('-a', '--alpha', default=0.01, help='(Hyperparameter) Inverse variance of dirichlet process.')
     parser.add_argument('-m', '--hpmean', default=np.array([0.0]), help='(Hyperparameter) Mean of base measure.')
     parser.add_argument('-r', '--hpvar', default=np.array([[1.0]]), help='(Hyperparameter) Variance of base measure.')
     parser.add_argument('-v', '--verbose', action='store_true', default=False, help='Increase verbosity.')
@@ -192,15 +196,17 @@ def main():
                         'HP_MEAN': hpmean,
                         'HP_VAR': hpvar,
                         'NUM_DATA': len(data),
-                        'DIMENSION': dimension} 
+                        'DIMENSION': dimension}
 
     state = State(data, hyperparameters=hyperparameters, initNumCluster=1)
 
-    for _ in range(args.numiter):
-        logging.info('Iteration %d: number of cluster %d' % ((_ + 1), state.numCluster))
+    for iteration in range(1, args.numiter + 1):
+        logging.info('Iteration %d: number of cluster %d' % ((iteration), state.numCluster))
         state.gibbs_step()
+        state.plot_clusters(iteration=iteration, save=os.path.join(args.output, os.path.basename(args.input).strip('.tsv') + '_%d.png' % iteration))
 
-    state.plot_clusters(numIter=args.numiter, save=os.path.join('figures/alg2_numpy/', os.path.basename(args.input).strip('.tsv') + '.png'))
+    imgPaths = [os.path.join(args.output, os.path.basename(args.input).strip('.tsv') + '_%d.png' % iteration) for iteration in range(1, args.numiter + 1)]
+    img2gif(imgPaths, os.path.join(args.output, os.path.basename(args.input).strip('.tsv') + '.gif'), duration=0.25)
 
 if __name__ == '__main__':
     main()

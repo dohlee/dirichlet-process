@@ -5,7 +5,9 @@ import numpy as np
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 import seaborn as sns; sns.set_style('white');
-from alg2_numpy import NormalDistribution
+
+from distributions import NormalDistribution
+from util import img2gif
 
 class Cluster:
 
@@ -14,7 +16,7 @@ class Cluster:
         self.hp = hyperparameters
 
         self.distribution = distribution
-        self.baseMeasure = baseMeasure(mean=self.hp['HP_MEAN'], stddev=np.sqrt(self.hp['HP_VAR']))
+        self.baseMeasure = baseMeasure(mean=self.hp['HP_MEAN'], cov=self.hp['HP_VAR'])
         self.data = OrderedDict()
 
     def add_datum(self, id, datum):
@@ -28,8 +30,8 @@ class Cluster:
 
     def score(self, datum):
         """Return cluster assignment score given datum."""
-        phi = 0  # The value of phi doesn't matter.
-        likelihood = self.distribution(mean=phi, stddev=np.sqrt(self.hp['CLUSTER_VAR'])).logpdf(datum)
+        phi = np.zeros(self.hp['DIMENSION'])  # Value of phi doesn't matter.
+        likelihood = self.distribution(mean=phi, cov=self.hp['CLUSTER_VAR']).logpdf(datum)
         prior = self.baseMeasure.posterior_distribution(data=list(self.data.values()), clusterVariance=self.hp['CLUSTER_VAR']).logpdf(phi)
         posterior = self.baseMeasure.posterior_distribution(data=list(self.data.values()) + [datum], clusterVariance=self.hp['CLUSTER_VAR']).logpdf(phi)
 
@@ -45,7 +47,7 @@ class State:
         self.hp = hyperparameters
         self.alpha = self.hp['ALPHA']
 
-        self.baseMeasure = baseMeasure(mean=self.hp['HP_MEAN'], stddev=np.sqrt(self.hp['HP_VAR']))
+        self.baseMeasure = baseMeasure(mean=self.hp['HP_MEAN'], cov=self.hp['HP_VAR'])
         self.clusterDist = clusterDistribution
 
         self.numCluster = initNumCluster
@@ -91,11 +93,17 @@ class State:
                 assignedCluster.add_datum(datumId, datum)
                 self.assignment[datumId] = assignedClusterId
 
-    def plot_clusters(self, numIter, save=None):
+    def plot_clusters(self, iteration, save=None):
+        plt.clf()
+
         d = [self.data[self.assignment == clusterId] for clusterId in self.clusters]
-        plt.suptitle('%s' % os.path.basename(save))
-        plt.title('#Iteration=%d, #Cluster=%d' % (numIter, len(self.clusters)))
-        plt.hist(d, histtype='stepfilled', alpha=.66, bins=60, ec='black')
+        plt.suptitle('Iteration=%d' % iteration)
+        plt.title('#Cluster=%d' % len(self.clusters))
+        if self.hp['DIMENSION'] == 1:
+            plt.hist(d, histtype='stepfilled', alpha=.66, bins=60, ec='black')
+        else:
+            for data in d:
+                plt.scatter(data[:, 0], data[:, 1], marker='.', alpha=0.66)
 
         if save:
             logging.info('Figure %s saved.' % save)
@@ -113,8 +121,8 @@ class State:
         return self.clusters[self.assignment[datumId]]
 
     def new_assignment_score(self, datum):
-        phi = 0
-        likelihood = self.clusterDist(mean=phi, stddev=np.sqrt(self.hp['CLUSTER_VAR'])).logpdf(datum)
+        phi = np.zeros(self.hp['DIMENSION'])  # Value of phi doesn't matter.
+        likelihood = self.clusterDist(mean=phi, cov=self.hp['CLUSTER_VAR']).logpdf(datum)
         prior = self.baseMeasure.logpdf(phi)
         posterior = self.baseMeasure.posterior_distribution(data=[datum], clusterVariance=self.hp['CLUSTER_VAR']).logpdf(phi)
 
@@ -126,11 +134,12 @@ class State:
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', required=True, help='Input data.')
+    parser.add_argument('-o', '--output', default='../figures/alg3_numpy/', help='Output directory')
     parser.add_argument('-n', '--numiter', type=int, default=10, help='Number of iteration.')
     parser.add_argument('-c', '--clustervar', type=float, required=True, help='(Hyperparameter) Cluster variance.')
-    parser.add_argument('-a', '--alpha', default=0.1, help='(Hyperparameter) Inverse variance of dirichlet process.')
-    parser.add_argument('-m', '--hpmean', default=0.0, help='(Hyperparameter) Mean of base measure.')
-    parser.add_argument('-r', '--hpvar', default=1.0, help='(Hyperparameter) Variance of base measure.')
+    parser.add_argument('-a', '--alpha', default=0.01, help='(Hyperparameter) Inverse variance of dirichlet process.')
+    parser.add_argument('-m', '--hpmean', default=np.array([0.0]), help='(Hyperparameter) Mean of base measure.')
+    parser.add_argument('-r', '--hpvar', default=np.array([[1.0]]), help='(Hyperparameter) Variance of base measure.')
     parser.add_argument('-v', '--verbose', action='store_true', default=False, help='Increase verbosity.')
     parser.add_argument('-d', '--debug', action='store_true', default=False, help='Run in debug mode.')
 
@@ -144,19 +153,28 @@ def main():
         logging.basicConfig(level=logging.DEBUG)
 
     data = np.loadtxt(args.input, dtype=np.float32)
+    # Prepare hyperparameters
+    dimension = len(data[0]) if data.ndim > 1 else 1
+    cov = args.clustervar * np.eye(dimension)
+    hpmean = np.zeros([dimension])
+    hpvar = 1 * np.eye(dimension)
     hyperparameters = {'ALPHA': args.alpha,
-                        'CLUSTER_VAR': args.clustervar,
-                        'HP_MEAN': args.hpmean,
-                        'HP_VAR': args.hpvar,
-                        'NUM_DATA': len(data)} 
+                        'CLUSTER_VAR': cov,
+                        'HP_MEAN': hpmean,
+                        'HP_VAR': hpvar,
+                        'NUM_DATA': len(data),
+                        'DIMENSION': dimension}
 
     state = State(data, hyperparameters=hyperparameters, initNumCluster=1)
 
-    for _ in range(args.numiter):
-        logging.info('Iteration %d: number of cluster %d' % ((_ + 1), state.numCluster))
+    for iteration in range(1, args.numiter + 1):
+        logging.info('Iteration %d: number of cluster %d' % (iteration, state.numCluster))
         state.gibbs_step()
 
-    state.plot_clusters(numIter=args.numiter, save=os.path.join('figures/alg3_numpy/', os.path.basename(args.input).strip('.tsv') + '.png'))
+        state.plot_clusters(iteration=iteration, save=os.path.join(args.output, os.path.basename(args.input).strip('.tsv') + '_%d.png' % iteration))
+
+    imgPaths = [os.path.join(args.output, os.path.basename(args.input).strip('.tsv') + '_%d.png' % iteration) for iteration in range(1, args.numiter + 1)]
+    img2gif(imgPaths, os.path.join(args.output, os.path.basename(args.input).strip('.tsv') + '.gif'), duration=0.25)
 
 if __name__ == '__main__':
     main()

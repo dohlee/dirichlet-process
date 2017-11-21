@@ -1,13 +1,14 @@
 import os
 import argparse
 import logging
-import imageio
 import numpy as np
 from distributions import NormalDistribution
 from collections import Counter
 import matplotlib.pyplot as plt
 import seaborn as sns; sns.set()
 sns.set_style('white')
+
+from util import img2gif
 
 def sample_theta_from_conditional(data, thetas, hp, i, baseMeasure, clusterDistributions):
     """Sample ith from distribution of thetas conditioned by
@@ -50,7 +51,7 @@ def parse_arguments():
     parser.add_argument('-i', '--input', required=True, help='Input data.')
     parser.add_argument('-n', '--numiter', type=int, default=10, help='Number of iteration.')
     parser.add_argument('-c', '--clustervar', type=float, required=True, help='(Hyperparameter) Cluster variance.')
-    parser.add_argument('-a', '--alpha', default=0.1, help='(Hyperparameter) Inverse variance of dirichlet process.')
+    parser.add_argument('-a', '--alpha', default=0.01, help='(Hyperparameter) Inverse variance of dirichlet process.')
     parser.add_argument('-m', '--hpmean', default=np.array([0.0]), help='(Hyperparameter) Mean of base measure.')
     parser.add_argument('-r', '--hpvar', default=np.array([[1.0]]), help='(Hyperparameter) Variance of base measure.')
     parser.add_argument('-v', '--verbose', action='store_true', default=False, help='Increase verbosity.')
@@ -81,14 +82,14 @@ def main():
     baseMeasure = NormalDistribution(mean=hpmean, cov=hpvar)
     clusterDistribution = [NormalDistribution(mean=theta, cov=hyperparameters['CLUSTER_VAR']) for theta in thetas]
 
-    for iteration in range(args.numiter):
-        logging.info('Iteration %d' % (iteration + 1))
+    for iteration in range(1, args.numiter + 1):
+        logging.info('Iteration %d' % (iteration))
         for i in range(len(data)):
             thetas[i] = sample_theta_from_conditional(data, thetas, hyperparameters, i, baseMeasure, clusterDistribution)
             clusterDistribution[i] = NormalDistribution(mean=thetas[i], cov=hyperparameters['CLUSTER_VAR'])
 
         thetaCounts = Counter(list(map(lambda x: x[0], thetas)))
-        plt.suptitle('Iteration=%d' % (iteration + 1))
+        plt.suptitle('Iteration=%d' % (iteration))
         plt.title('alpha=%.3f, cluster_var=%.3f' % (args.alpha, args.clustervar))
         plt.xlim((-4, 4))
         plt.ylim((-2, 30))
@@ -96,17 +97,13 @@ def main():
         for theta in thetas:
             plt.scatter(theta[0], y=0, alpha=0.66, zorder=2, s=thetaCounts[theta[0]] * 5)
 
-        imgFileName = '../figures/alg1_numpy/alg1_numpy_%s_iteration_%d.png' % (os.path.basename(args.input).strip('.tsv'), iteration + 1)
+        imgFileName = '../figures/alg1_numpy/%s_iteration_%d.png' % (os.path.basename(args.input).strip('.tsv'), iteration)
         plt.savefig(imgFileName)
         logging.info('Figure %s saved.' % imgFileName)
         plt.clf()
 
-    images = [imageio.imread('../figures/alg1_numpy/alg1_numpy_%s_iteration_%d.png'  % (os.path.basename(args.input).strip('.tsv'), iteration + 1)) \
-              for iteration in range(args.numiter)]
-    imageio.mimsave('../figures/alg1_numpy/alg1_numpy_%s.gif'  % (os.path.basename(args.input).strip('.tsv')), images, duration=0.33)
-
-    for iteration in range(args.numiter):
-        os.remove('../figures/alg1_numpy/alg1_numpy_%s_iteration_%d.png'  % (os.path.basename(args.input).strip('.tsv'), iteration + 1))
+    imgPaths = ['../figures/alg1_numpy/%s_iteration_%d.png' % (os.path.basename(args.input).strip('.tsv'), iteration) for iteration in range(1, args.numiter + 1)]
+    img2gif(imagePaths=imgPaths, gifPath='../figures/alg1_numpy/%s.gif' % (os.path.basename(args.input).strip('.tsv'))) 
 
 if __name__ == '__main__':
     main()
