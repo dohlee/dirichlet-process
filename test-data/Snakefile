@@ -1,0 +1,16 @@
+# Pipeline for generating test data.
+rule all:
+    input:
+        expand('data/{dimension}d-cluster-{numCluster}.tsv', dimension=[1, 2], numCluster=range(2, 6))
+
+rule generate_1d:
+    output:
+        expand('data/1d-cluster-{numCluster}.tsv', numCluster=range(2, 6)),
+    shell:
+        'python scripts/1d_gen.py'
+
+rule generate_2d:
+    output:
+        expand('data/2d-cluster-{numCluster}.tsv', numCluster=range(2, 6))
+    shell:
+        'python scripts/2d_gen.py'
